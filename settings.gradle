@@ -1,0 +1,5 @@
+﻿rootProject.name = 'owl'
+
+include 'owl-core'
+include 'owl-adapter-davis'
+include 'owl-adapter-metar'

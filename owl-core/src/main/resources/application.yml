@@ -1,0 +1,54 @@
+micronaut:
+  application:
+    name: owl
+
+# Database configuration
+datasources:
+  default:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:weather}
+    username: ${DB_USER:weather}
+    password: ${DB_PASSWORD:weather}
+    driver-class-name: org.postgresql.Driver
+    dialect: POSTGRES
+    schema-generate: NONE
+
+# Database migrations
+flyway:
+  datasources:
+    default:
+      enabled: true
+      locations: classpath:db/migration
+
+# Owl configuration
+owl:
+  # Plugins directory for loading adapter JARs
+  plugins:
+    directory: ${OWL_PLUGINS_DIR:plugins}
+
+  # Adapter configurations
+  # Each adapter is configured under owl.adapters.<adapter-name>
+  adapters:
+    # METAR weather data adapter (HTTP polling)
+    metar-http:
+      enabled: false
+      station-id: ${METAR_STATION:EBBR}
+      poll-interval-minutes: 30
+      api-url: https://tgftp.nws.noaa.gov/data/observations/metar/stations/{STATION}.TXT
+
+    # Davis Vantage Pro adapter (serial port)
+    davis-serial:
+      enabled: false
+      serial-port: ${DAVIS_SERIAL_PORT:COM4}
+      baud-rate: 19200
+      latitude: ${DAVIS_LAT:51.063}
+      longitude: ${DAVIS_LON:4.667}
+      altitude: ${DAVIS_ALT:32.0}
+      loop-count: 200
+      wakeup-timeout-ms: 3000
+      reconnect-delay-ms: 5000
+
+# Logging configuration
+logger:
+  levels:
+    com.owl: DEBUG
+    owl.adapter: INFO

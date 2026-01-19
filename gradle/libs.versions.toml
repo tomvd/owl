@@ -1,0 +1,72 @@
+[versions]
+micronaut = "4.10.6"
+micronaut-plugin = "4.6.1"
+postgres = "42.7.4"
+hikari = "6.2.1"
+flyway = "11.2.0"
+reactor = "3.7.2"
+jackson = "2.18.2"
+slf4j = "2.0.16"
+logback = "1.5.16"
+jssc = "2.9.6"
+jserialcomm = "2.11.0"
+
+# Testing
+junit = "5.11.4"
+mockito = "5.15.2"
+assertj = "3.27.2"
+mockwebserver = "4.12.0"
+
+[libraries]
+# Micronaut
+micronaut-core = { module = "io.micronaut:micronaut-runtime", version.ref = "micronaut" }
+micronaut-inject = { module = "io.micronaut:micronaut-inject", version.ref = "micronaut" }
+micronaut-http-client = { module = "io.micronaut:micronaut-http-client", version.ref = "micronaut" }
+micronaut-management = { module = "io.micronaut:micronaut-management", version.ref = "micronaut" }
+micronaut-jdbc-hikari = { module = "io.micronaut.sql:micronaut-jdbc-hikari", version.ref = "micronaut" }
+micronaut-flyway = { module = "io.micronaut.flyway:micronaut-flyway", version.ref = "micronaut" }
+micronaut-data-jdbc = { module = "io.micronaut.data:micronaut-data-jdbc", version.ref = "micronaut" }
+micronaut-reactor = { module = "io.micronaut.reactor:micronaut-reactor", version.ref = "micronaut" }
+micronaut-serde-jackson = { module = "io.micronaut.serde:micronaut-serde-jackson", version.ref = "micronaut" }
+
+# Database
+postgres = { module = "org.postgresql:postgresql", version.ref = "postgres" }
+hikari = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
+flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+flyway-postgres = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+
+# Reactive
+reactor-core = { module = "io.projectreactor:reactor-core", version.ref = "reactor" }
+
+# JSON
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
+
+# Logging
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+# Serial communication
+jssc = { module = "io.github.java-native:jssc", version.ref = "jssc" }
+jserialcomm = { module = "com.fazecast:jSerialComm", version.ref = "jserialcomm" }
+
+# Testing
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "mockwebserver" }
+h2-database = { module = "com.h2database:h2" }
+
+[bundles]
+micronaut = ["micronaut-core", "micronaut-inject", "micronaut-http-client"]
+micronaut-data = ["micronaut-data-jdbc", "micronaut-jdbc-hikari", "micronaut-flyway"]
+database = ["postgres", "flyway-core", "flyway-postgres"]
+jackson = ["jackson-databind", "jackson-datatype-jsr310"]
+testing = ["junit-jupiter", "mockito-core", "assertj-core"]
+
+[plugins]
+micronaut-application = { id = "io.micronaut.application", version.ref = "micronaut-plugin" }
+micronaut-library = { id = "io.micronaut.library", version.ref = "micronaut-plugin" }
+micronaut-aot = { id = "io.micronaut.aot", version.ref = "micronaut-plugin" }
+shadow = { id = "com.gradleup.shadow", version = "8.3.9" }
