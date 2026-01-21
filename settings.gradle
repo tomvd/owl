@@ -1,4 +1,23 @@
-﻿rootProject.name = 'owl'
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+    plugins {
+        id 'io.micronaut.application' version '4.5.3'
+        id 'io.micronaut.library' version '4.5.3'
+        id 'io.micronaut.aot' version '4.5.3'
+        id 'com.gradleup.shadow' version '8.3.6'
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'owl'
 
 include 'owl-core'
 include 'owl-adapter-davis'
