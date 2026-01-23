@@ -36,9 +36,10 @@ owl:
       api-url: https://tgftp.nws.noaa.gov/data/observations/metar/stations/{STATION}.TXT
 
     # Davis Vantage Pro adapter (serial port)
+    # Set serial-port to "SIMULATED" to run without hardware
     davis-serial:
-      enabled: false
-      serial-port: ${DAVIS_SERIAL_PORT:COM4}
+      enabled: true
+      serial-port: ${DAVIS_SERIAL_PORT:SIMULATED}
       baud-rate: 19200
       latitude: ${DAVIS_LAT:51.063}
       longitude: ${DAVIS_LON:4.667}

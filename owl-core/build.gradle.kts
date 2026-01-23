@@ -18,6 +18,7 @@ dependencies {
     implementation("io.micronaut.reactor:micronaut-reactor")
     implementation("io.micronaut.reactor:micronaut-reactor-http-client")
     implementation("io.micronaut.serde:micronaut-serde-jackson")
+    implementation("io.micronaut:micronaut-jackson-databind")
     implementation("io.micronaut.sql:micronaut-jdbc-hikari")
     implementation("io.micrometer:context-propagation")
     implementation("io.micronaut.micrometer:micronaut-micrometer-core")
@@ -30,12 +31,23 @@ dependencies {
     runtimeOnly("ch.qos.logback:logback-classic")
     runtimeOnly("org.yaml:snakeyaml")
 
+    // Adapters (loaded at runtime via ServiceLoader)
+    runtimeOnly(project(":owl-adapter-davis"))
+    runtimeOnly(project(":owl-adapter-metar"))
+    runtimeOnly(project(":owl-service-export"))
+
     // Testing
     testRuntimeOnly("com.h2database:h2")
 }
 
 application {
     mainClass.set("com.owl.core.OwlApplication")
+    applicationDefaultJvmArgs = listOf(
+        // Enable native access for jSerialComm without warnings
+        "--enable-native-access=ALL-UNNAMED",
+        // Use project-local temp directory to avoid antivirus issues with DLL extraction
+        "-Djava.io.tmpdir=${project.rootDir}/tmp"
+    )
 }
 
 graalvmNative.toolchainDetection = false

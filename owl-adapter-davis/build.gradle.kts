@@ -6,11 +6,21 @@ dependencies {
     // Core API (compile-only to avoid bundling)
     compileOnly(project(":owl-core"))
 
-    // Serial communication
-    implementation("com.fazecast:jSerialComm:2.11.0")
+    // Serial communication (2.10.4 has better platform detection than 2.11.0)
+    implementation("com.fazecast:jSerialComm:2.10.4")
+
+    // Logging (provided by runtime, compile-only here)
+    compileOnly("org.slf4j:slf4j-api:2.0.9")
 
     // Testing
     testImplementation(project(":owl-core"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation("org.assertj:assertj-core:3.25.3")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks.jar {

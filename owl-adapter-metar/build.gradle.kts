@@ -8,6 +8,9 @@ dependencies {
 
     // HTTP client is built into Java 11+, no additional dependencies needed
 
+    // Logging (provided by runtime, compile-only here)
+    compileOnly("org.slf4j:slf4j-api:2.0.9")
+
     // Testing
     testImplementation(project(":owl-core"))
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

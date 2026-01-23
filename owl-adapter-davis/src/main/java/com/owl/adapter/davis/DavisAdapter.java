@@ -15,12 +15,19 @@
  */
 package com.owl.adapter.davis;
 
+import com.owl.adapter.davis.protocol.DavisLoopRecord;
+import com.owl.adapter.davis.protocol.DavisProtocolHandler;
+import com.owl.adapter.davis.serial.DavisSerialConnection;
+import com.owl.adapter.davis.serial.SimulatedDavisConnection;
 import com.owl.core.api.*;
 import org.slf4j.Logger;
 
+import java.io.IOException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Davis Vantage Pro weather adapter implementation.
@@ -40,13 +47,7 @@ import java.util.Map;
  *       enabled: true
  *       serial-port: COM4
  *       baud-rate: 19200
- *       latitude: 51.063
- *       longitude: 4.667
- *       altitude: 32.0
  * </pre>
- * <p>
- * TODO: Full implementation pending - this is a skeleton for structure demonstration.
- * The existing DavisAdapter code from com.tomvd.adapter.davis should be migrated here.
  */
 public class DavisAdapter implements WeatherAdapter {
 
@@ -56,6 +57,11 @@ public class DavisAdapter implements WeatherAdapter {
     private AdapterContext context;
     private volatile boolean running = false;
     private volatile Instant lastSuccessfulRead;
+
+    private DavisSerialConnection serialConnection;
+    private DavisProtocolHandler protocolHandler;
+    private int lastNextRecord = -1;
+    private Instant lastArchiveTime;
 
     @Override
     public String getName() {
@@ -205,25 +211,52 @@ public class DavisAdapter implements WeatherAdapter {
 
         logger.info("Configuration: port={}, baud={}", serialPort, baudRate);
 
-        // TODO: Implement full serial port communication
-        // The existing code from com.tomvd.adapter.davis.DavisAdapter should be migrated here.
-        // Key implementation points:
-        // 1. Open serial port in dedicated thread
-        // 2. Wake up console with \n characters
-        // 3. Send LOOP command to request data packets
-        // 4. Parse LOOP packets (99 bytes) with CRC validation
-        // 5. Publish sensor readings to message bus
-        // 6. Handle reconnection on errors
+        try {
+            // Create serial connection (real or simulated)
+            if (SimulatedDavisConnection.isSimulatedPort(serialPort)) {
+                logger.info("Using SIMULATED connection - no hardware required");
+                serialConnection = new SimulatedDavisConnection(serialPort, baudRate);
+            } else {
+                serialConnection = new DavisSerialConnection(serialPort, baudRate);
+            }
 
-        this.running = true;
-        logger.warn("Davis adapter started in SKELETON mode - full implementation pending migration");
+            // Create protocol handler
+            protocolHandler = new DavisProtocolHandler(serialConnection);
+
+            // Set up callbacks
+            protocolHandler.setLoopRecordCallback(this::onLoopRecord);
+            protocolHandler.setArchiveRecordCallback(this::onArchiveRecord);
+            protocolHandler.setStateChangeCallback(state ->
+                    logger.debug("Protocol state: {}", state));
+            protocolHandler.setErrorCallback(error ->
+                    logger.error("Protocol error: {}", error));
+
+            // Start the protocol handler
+            protocolHandler.start();
+
+            this.running = true;
+            logger.info("Davis adapter started successfully");
+
+        } catch (IOException e) {
+            throw new AdapterException("Failed to start Davis adapter: " + e.getMessage(), e);
+        }
     }
 
     @Override
     public void stop() throws AdapterException {
         logger.info("Stopping Davis Vantage Pro adapter");
         running = false;
-        // TODO: Close serial port and stop reader thread
+
+        if (protocolHandler != null) {
+            protocolHandler.stop();
+            protocolHandler = null;
+        }
+
+        if (serialConnection != null) {
+            serialConnection.close();
+            serialConnection = null;
+        }
+
         logger.info("Davis adapter stopped");
     }
 
@@ -234,7 +267,14 @@ public class DavisAdapter implements WeatherAdapter {
         }
 
         if (lastSuccessfulRead == null) {
-            return AdapterHealth.degraded("No data received yet (skeleton mode)", Map.of());
+            return AdapterHealth.degraded("No data received yet", Map.of());
+        }
+
+        // Check if data is stale (no update in 30 seconds)
+        Instant staleThreshold = Instant.now().minusSeconds(30);
+        if (lastSuccessfulRead.isBefore(staleThreshold)) {
+            return AdapterHealth.degraded("Data is stale",
+                    Map.of("lastRead", lastSuccessfulRead.toString()));
         }
 
         return AdapterHealth.healthy("Operating normally", lastSuccessfulRead);
@@ -249,8 +289,169 @@ public class DavisAdapter implements WeatherAdapter {
     @Override
     public RecoveryHandle requestRecovery(Instant fromTime, Instant toTime) throws AdapterException {
         logger.info("Recovery requested from {} to {}", fromTime, toTime);
-        // TODO: Implement archive download from Davis console
-        // Use DMPAFT command to download archive records after a specific timestamp
-        throw new AdapterException("Recovery not yet implemented");
+
+        if (protocolHandler == null) {
+            throw new AdapterException("Adapter not started");
+        }
+
+        // Start archive download asynchronously
+        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+            try {
+                protocolHandler.downloadArchive(fromTime);
+            } catch (IOException e) {
+                logger.error("Archive download failed", e);
+                throw new RuntimeException(e);
+            }
+        });
+
+        return new RecoveryHandle() {
+            private volatile long recordsRecovered = 0;
+
+            @Override
+            public State getState() {
+                if (!future.isDone()) {
+                    return State.RUNNING;
+                }
+                if (future.isCompletedExceptionally()) {
+                    return State.FAILED;
+                }
+                return State.COMPLETED;
+            }
+
+            @Override
+            public java.util.Optional<Integer> getProgress() {
+                return java.util.Optional.empty(); // Progress unknown for Davis archive
+            }
+
+            @Override
+            public long getRecordsRecovered() {
+                return recordsRecovered;
+            }
+
+            @Override
+            public java.util.Optional<String> getError() {
+                if (future.isCompletedExceptionally()) {
+                    try {
+                        future.join();
+                    } catch (Exception e) {
+                        return java.util.Optional.of(e.getCause() != null ? e.getCause().getMessage() : e.getMessage());
+                    }
+                }
+                return java.util.Optional.empty();
+            }
+
+            @Override
+            public void cancel() {
+                future.cancel(true);
+            }
+
+            @Override
+            public void await() throws InterruptedException {
+                try {
+                    future.join();
+                } catch (java.util.concurrent.CancellationException e) {
+                    throw new InterruptedException("Recovery cancelled");
+                }
+            }
+        };
+    }
+
+    // ==================== Record Callbacks ====================
+
+    private void onLoopRecord(DavisLoopRecord record) {
+        Instant now = Instant.now();
+        lastSuccessfulRead = now;
+
+        // Check for new archive record (for auto-archiving detection)
+        if (lastNextRecord != -1 && lastNextRecord != record.nextRecord() && lastArchiveTime != null) {
+            logger.debug("Archive record changed: {} -> {}", lastNextRecord, record.nextRecord());
+            // Could trigger archive download here if needed
+        }
+        lastNextRecord = record.nextRecord();
+        lastArchiveTime = now;
+
+        // Build sensor readings
+        List<SensorReading> readings = new ArrayList<>();
+
+        // Only publish valid readings (skip zero values for sensors that can't be zero)
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_temp_out", record.tempOut()));
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_temp_in", record.tempIn()));
+
+        if (record.humidityOut() > 0) {
+            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_humidity_out", record.humidityOut()));
+        }
+        if (record.humidityIn() > 0) {
+            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_humidity_in", record.humidityIn()));
+        }
+
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_pressure", record.pressure()));
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_wind_speed", record.windSpeed()));
+
+        if (record.windDir() >= 0 && record.windDir() <= 360) {
+            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_wind_direction", record.windDir()));
+        }
+
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_wind_gust", record.windGust()));
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_rain_rate", record.rainRate()));
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_rain_daily", record.rainDaily()));
+
+        if (record.solarRadiation() > 0) {
+            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_solar_radiation", record.solarRadiation()));
+        }
+        if (record.uvIndex() > 0) {
+            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_uv_index", record.uvIndex()));
+        }
+
+        // Publish batch
+        try {
+            context.getMessageBus().publishBatch(readings);
+            logger.debug("Published {} readings: temp={}, humidity={}, pressure={}",
+                    readings.size(), record.tempOut(), record.humidityOut(), record.pressure());
+        } catch (MessageBusException e) {
+            logger.error("Failed to publish readings", e);
+        }
+    }
+
+    private void onArchiveRecord(com.owl.adapter.davis.protocol.DavisArchiveRecord record) {
+        Instant timestamp = record.timestamp();
+
+        // Build sensor readings from archive record
+        List<SensorReading> readings = new ArrayList<>();
+
+        readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_temp_out", record.tempOut()));
+        readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_temp_in", record.tempIn()));
+
+        if (record.humidityOut() > 0) {
+            readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_humidity_out", record.humidityOut()));
+        }
+        if (record.humidityIn() > 0) {
+            readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_humidity_in", record.humidityIn()));
+        }
+
+        readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_pressure", record.pressure()));
+        readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_wind_speed", record.windSpeed()));
+
+        if (record.windDir() >= 0 && record.windDir() <= 360) {
+            readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_wind_direction", record.windDir()));
+        }
+
+        readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_wind_gust", record.windGust()));
+        readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_rain_rate", record.rainRate()));
+        readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_rain_daily", record.rain()));
+
+        if (record.solarRadiation() > 0) {
+            readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_solar_radiation", record.solarRadiation()));
+        }
+        if (record.uvIndex() > 0) {
+            readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_uv_index", record.uvIndex()));
+        }
+
+        // Publish batch
+        try {
+            context.getMessageBus().publishBatch(readings);
+            logger.debug("Published {} archive readings for {}", readings.size(), timestamp);
+        } catch (MessageBusException e) {
+            logger.error("Failed to publish archive readings", e);
+        }
     }
 }

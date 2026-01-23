@@ -27,6 +27,7 @@ import java.time.Instant;
 @Serdeable
 @Embeddable
 public record EventId(
+        @MappedProperty("timestamp")
         Instant timestamp,
 
         @MappedProperty("entity_id")
