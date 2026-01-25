@@ -38,3 +38,10 @@ INSERT INTO entities (entity_id, friendly_name, source, unit_of_measurement, dev
 ('sensor.metar_pressure', 'METAR Pressure', 'metar', 'hPa', 'pressure', 'mean'),
 ('sensor.metar_visibility', 'METAR Visibility', 'metar', 'm', NULL, 'mean'),
 ('sensor.metar_raw', 'METAR Raw String', 'metar', NULL, NULL, 'last');
+
+-- Seed entity definitions for OpenWeather API
+
+('sensor.openweather_wind_dir', 'OpenWeather Wind Direction', 'openweather', '°', NULL, 'mean'),
+('sensor.openweather_clouds', 'OpenWeather Cloud Coverage', 'openweather', '%', NULL, 'mean'),
+('sensor.openweather_weather_id', 'OpenWeather Condition ID', 'openweather', NULL, NULL, 'last'),
+('sensor.openweather_weather_icon', 'OpenWeather Icon', 'openweather', NULL, NULL, 'last');

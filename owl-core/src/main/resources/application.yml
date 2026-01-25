@@ -47,6 +47,14 @@ owl:
       loop-count: 200
       wakeup-timeout-ms: 3000
       reconnect-delay-ms: 5000
+    openweather:
+      enabled: true
+      latitude: 51.1333
+      longitude: 4.5667
+      units: metric        # or imperial
+      lang: nl             # language for descriptions
+      poll-interval-minutes: 10
+      api-url: https://api.openweathermap.org/data/2.5/weather
 
 # Logging configuration
 logger:

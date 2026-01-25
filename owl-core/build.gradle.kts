@@ -33,7 +33,7 @@ dependencies {
 
     // Adapters (loaded at runtime via ServiceLoader)
     runtimeOnly(project(":owl-adapter-davis"))
-    runtimeOnly(project(":owl-adapter-metar"))
+    runtimeOnly(project(":owl-adapter-openweather"))
     runtimeOnly(project(":owl-service-export"))
 
     // Testing
