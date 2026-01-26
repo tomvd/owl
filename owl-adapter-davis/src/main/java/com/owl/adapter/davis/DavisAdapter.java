@@ -364,42 +364,52 @@ public class DavisAdapter implements WeatherAdapter {
 
         // Check for new archive record (for auto-archiving detection)
         if (lastNextRecord != -1 && lastNextRecord != record.nextRecord() && lastArchiveTime != null) {
-            logger.debug("Archive record changed: {} -> {}", lastNextRecord, record.nextRecord());
-            // Could trigger archive download here if needed
+            logger.info("Archive record changed: {} -> {}, triggering download", lastNextRecord, record.nextRecord());
+            // Trigger archive download asynchronously
+            // Use time from 6 minutes ago to ensure we catch the new record
+            // (Davis timestamps have only minute precision, and archive interval is 5 min)
+            Instant downloadFrom = lastArchiveTime.minusSeconds(360);
+            CompletableFuture.runAsync(() -> {
+                try {
+                    protocolHandler.downloadArchive(downloadFrom);
+                } catch (IOException e) {
+                    logger.error("Failed to download archive after record change", e);
+                }
+            });
         }
         lastNextRecord = record.nextRecord();
         lastArchiveTime = now;
 
-        // Build sensor readings
+        // Build sensor readings - loop records are NOT persistent (transient data for live display only)
         List<SensorReading> readings = new ArrayList<>();
 
         // Only publish valid readings (skip zero values for sensors that can't be zero)
-        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_temp_out", record.tempOut()));
-        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_temp_in", record.tempIn()));
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_temp_out", record.tempOut(), null, false));
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_temp_in", record.tempIn(), null, false));
 
         if (record.humidityOut() > 0) {
-            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_humidity_out", record.humidityOut()));
+            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_humidity_out", record.humidityOut(), null, false));
         }
         if (record.humidityIn() > 0) {
-            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_humidity_in", record.humidityIn()));
+            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_humidity_in", record.humidityIn(), null, false));
         }
 
-        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_pressure", record.pressure()));
-        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_wind_speed", record.windSpeed()));
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_pressure", record.pressure(), null, false));
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_wind_speed", record.windSpeed(), null, false));
 
         if (record.windDir() >= 0 && record.windDir() <= 360) {
-            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_wind_direction", record.windDir()));
+            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_wind_direction", record.windDir(), null, false));
         }
 
-        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_wind_gust", record.windGust()));
-        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_rain_rate", record.rainRate()));
-        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_rain_daily", record.rainDaily()));
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_wind_gust", record.windGust(), null, false));
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_rain_rate", record.rainRate(), null, false));
+        readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_rain_daily", record.rainDaily(), null, false));
 
         if (record.solarRadiation() > 0) {
-            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_solar_radiation", record.solarRadiation()));
+            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_solar_radiation", record.solarRadiation(), null, false));
         }
         if (record.uvIndex() > 0) {
-            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_uv_index", record.uvIndex()));
+            readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_uv_index", record.uvIndex(), null, false));
         }
 
         // Publish batch

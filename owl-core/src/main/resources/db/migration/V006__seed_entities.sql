@@ -37,7 +37,7 @@ INSERT INTO entities (entity_id, friendly_name, source, unit_of_measurement, dev
 ('sensor.metar_dewpoint', 'METAR Dew Point', 'metar', '°C', 'temperature', 'mean'),
 ('sensor.metar_pressure', 'METAR Pressure', 'metar', 'hPa', 'pressure', 'mean'),
 ('sensor.metar_visibility', 'METAR Visibility', 'metar', 'm', NULL, 'mean'),
-('sensor.metar_raw', 'METAR Raw String', 'metar', NULL, NULL, 'last');
+('sensor.metar_raw', 'METAR Raw String', 'metar', NULL, NULL, 'last'),
 
 -- Seed entity definitions for OpenWeather API
 

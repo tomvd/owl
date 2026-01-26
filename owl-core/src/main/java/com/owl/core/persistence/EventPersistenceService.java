@@ -52,6 +52,7 @@ public class EventPersistenceService {
         subscription = messageBus.getEventFlux()
                 .filter(event -> event instanceof SensorReading)
                 .map(event -> (SensorReading) event)
+                .filter(SensorReading::isPersistent)
                 .subscribe(
                         this::persistSensorReading,
                         error -> LOG.error("Error in persistence stream", error)
