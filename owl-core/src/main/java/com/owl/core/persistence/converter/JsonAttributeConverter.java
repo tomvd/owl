@@ -26,9 +26,12 @@ import java.util.Map;
 
 /**
  * Converts between Map&lt;String, Object&gt; and PostgreSQL JSONB.
+ * <p>
+ * Handles both String input (when JDBC returns raw JSON) and Map input
+ * (when JDBC driver pre-parses the JSONB column).
  */
 @Singleton
-public class JsonAttributeConverter implements AttributeConverter<Map<String, Object>, String> {
+public class JsonAttributeConverter implements AttributeConverter<Map<String, Object>, Object> {
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
@@ -39,7 +42,7 @@ public class JsonAttributeConverter implements AttributeConverter<Map<String, Ob
     }
 
     @Override
-    public String convertToPersistedValue(Map<String, Object> entityValue, ConversionContext context) {
+    public Object convertToPersistedValue(Map<String, Object> entityValue, ConversionContext context) {
         if (entityValue == null) {
             return null;
         }
@@ -51,14 +54,29 @@ public class JsonAttributeConverter implements AttributeConverter<Map<String, Ob
     }
 
     @Override
-    public Map<String, Object> convertToEntityValue(String persistedValue, ConversionContext context) {
-        if (persistedValue == null || persistedValue.isEmpty()) {
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> convertToEntityValue(Object persistedValue, ConversionContext context) {
+        if (persistedValue == null) {
             return null;
         }
-        try {
-            return objectMapper.readValue(persistedValue, MAP_TYPE);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to parse attributes from JSON", e);
+
+        // Handle case where JDBC driver already parsed JSONB to Map
+        if (persistedValue instanceof Map) {
+            return (Map<String, Object>) persistedValue;
         }
+
+        // Handle case where JDBC returns raw JSON string
+        if (persistedValue instanceof String stringValue) {
+            if (stringValue.isEmpty()) {
+                return null;
+            }
+            try {
+                return objectMapper.readValue(stringValue, MAP_TYPE);
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException("Failed to parse attributes from JSON", e);
+            }
+        }
+
+        throw new RuntimeException("Unexpected type for JSON attributes: " + persistedValue.getClass());
     }
 }

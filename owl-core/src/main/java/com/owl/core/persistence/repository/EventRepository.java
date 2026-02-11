@@ -33,10 +33,18 @@ import java.util.Optional;
 public interface EventRepository extends CrudRepository<Event, EventId> {
 
     /**
-     * Find events for a specific entity within a time range.
+     * Find events for a specific entity within a time range (exclusive end).
      */
     @Query("SELECT * FROM events WHERE entity_id = :entityId AND timestamp >= :start AND timestamp < :end ORDER BY timestamp")
     List<Event> findByEntityIdAndTimeRange(String entityId, Instant start, Instant end);
+
+    /**
+     * Find events for a specific entity within a time range (exclusive start, inclusive end).
+     * Used for statistics aggregation where events at boundary timestamps (like Davis archives) should be included.
+     * Prevents double-counting events at the start boundary.
+     */
+    @Query("SELECT * FROM events WHERE entity_id = :entityId AND timestamp > :start AND timestamp <= :end ORDER BY timestamp")
+    List<Event> findByEntityIdAndTimeRangeForStats(String entityId, Instant start, Instant end);
 
     /**
      * Find the most recent event for an entity.

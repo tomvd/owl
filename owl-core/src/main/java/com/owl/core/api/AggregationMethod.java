@@ -51,5 +51,11 @@ public enum AggregationMethod {
      * Final value in period (cumulative counters like daily rain).
      * Takes the last recorded value.
      */
-    LAST
+    LAST,
+
+    /**
+     * No numeric aggregation (non-numeric data like icons, conditions, text).
+     * Only attributes are captured from the last event.
+     */
+    NONE
 }
