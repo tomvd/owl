@@ -1,0 +1,20 @@
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: owl-db
+    environment:
+      POSTGRES_USER: weather
+      POSTGRES_PASSWORD: weather
+      POSTGRES_DB: weather
+    ports:
+      - "5432:5432"
+    volumes:
+      - owl-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U weather -d weather"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  owl-db-data:

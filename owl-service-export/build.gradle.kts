@@ -1,36 +1,28 @@
 plugins {
-    `java-library`
+    id("io.micronaut.library")
 }
 
 dependencies {
-    // Core API (compile-only to avoid bundling)
-    compileOnly(project(":owl-core"))
+    annotationProcessor("io.micronaut:micronaut-inject-java")
 
-    // Logging API (provided at runtime by owl-core)
-    compileOnly("org.slf4j:slf4j-api:2.0.9")
+    implementation(project(":owl-core"))
+
+    // JSON serialization
+    implementation("com.fasterxml.jackson.core:jackson-databind")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
     // Testing
-    testImplementation(project(":owl-core"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation("org.assertj:assertj-core:3.25.3")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-tasks.jar {
-    manifest {
-        attributes(
-            "Implementation-Title" to "Data Export Service",
-            "Implementation-Version" to project.version,
-            "Service-Name" to "export",
-            "Service-Version" to "1.0.0"
-        )
+tasks.test {
+    useJUnitPlatform()
+}
+
+micronaut {
+    processing {
+        annotations("com.owl.service.export.*")
     }
-}
-
-// Task to package service as standalone JAR
-tasks.register<Jar>("serviceJar") {
-    archiveClassifier.set("standalone")
-    from(sourceSets.main.get().output)
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
-artifacts {
-    archives(tasks.named("serviceJar"))
 }

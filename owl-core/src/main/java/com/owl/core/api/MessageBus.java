@@ -16,9 +16,10 @@
 package com.owl.core.api;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
- * Message bus for publishing weather events.
+ * Message bus for publishing and subscribing to weather events.
  * <p>
  * Thread-safe. All publish operations are non-blocking.
  */
@@ -41,4 +42,13 @@ public interface MessageBus {
      * @throws MessageBusException if events cannot be published
      */
     void publishBatch(List<? extends WeatherEvent> events) throws MessageBusException;
+
+    /**
+     * Subscribe to events of a specific type.
+     *
+     * @param eventType event type class to filter on
+     * @param consumer  event consumer
+     * @param <T>       event type
+     */
+    <T extends WeatherEvent> void subscribe(Class<T> eventType, Consumer<T> consumer);
 }

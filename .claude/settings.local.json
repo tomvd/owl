@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew bootRun)",
+      "Bash(./gradlew tasks:*)",
+      "Bash(./gradlew :owl-core:run:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(./gradlew:*)",
+      "Bash(find:*)",
+      "Bash(gradlew.bat :owl-adapter-openweather:build:*)",
+      "Bash(gradlew.bat clean build:*)",
+      "Bash(javap:*)",
+      "Bash(.\\\\gradlew.bat build:*)",
+      "Bash(gradlew.bat build:*)",
+      "Bash(cmd /c:*)",
+      "Bash(./gradlew.bat build:*)",
+      "Bash(./gradlew.bat compileJava:*)",
+      "Bash(./gradlew.bat test:*)",
+      "Bash(./gradlew.bat:*)",
+      "Bash(xargs:*)",
+      "Bash(unzip:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

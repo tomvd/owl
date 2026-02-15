@@ -20,7 +20,12 @@ import com.owl.adapter.davis.protocol.DavisProtocolHandler;
 import com.owl.adapter.davis.serial.DavisSerialConnection;
 import com.owl.adapter.davis.serial.SimulatedDavisConnection;
 import com.owl.core.api.*;
+import io.micronaut.context.annotation.Requires;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import jakarta.inject.Singleton;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -35,26 +40,17 @@ import java.util.concurrent.CompletableFuture;
  * Connects to a Davis Vantage Pro console via serial port and reads
  * LOOP packets every 2.5 seconds. Also supports archive data download
  * for recovery after downtime.
- * <p>
- * This adapter uses a dedicated thread for blocking serial I/O operations,
- * ensuring that serial port issues don't affect other parts of the system.
- * <p>
- * Configuration (application.yml):
- * <pre>
- * owl:
- *   adapters:
- *     davis-serial:
- *       enabled: true
- *       serial-port: COM4
- *       baud-rate: 19200
- * </pre>
  */
+@Singleton
+@Requires(property = "owl.adapters.davis-serial.enabled", value = "true")
 public class DavisAdapter implements WeatherAdapter {
 
+    private static final Logger LOG = LoggerFactory.getLogger(DavisAdapter.class);
     private static final String ADAPTER_NAME = "davis-serial";
 
-    private Logger logger;
-    private AdapterContext context;
+    private final MessageBus messageBus;
+    private final DavisConfiguration config;
+
     private volatile boolean running = false;
     private volatile Instant lastSuccessfulRead;
 
@@ -62,6 +58,11 @@ public class DavisAdapter implements WeatherAdapter {
     private DavisProtocolHandler protocolHandler;
     private int lastNextRecord = -1;
     private Instant lastArchiveTime;
+
+    public DavisAdapter(MessageBus messageBus, DavisConfiguration config) {
+        this.messageBus = messageBus;
+        this.config = config;
+    }
 
     @Override
     public String getName() {
@@ -81,7 +82,6 @@ public class DavisAdapter implements WeatherAdapter {
     @Override
     public List<EntityDefinition> getProvidedEntities() {
         return List.of(
-                // Temperature sensors
                 EntityDefinition.builder()
                         .entityId("sensor.davis_temp_out")
                         .friendlyName("Outside Temperature")
@@ -100,7 +100,6 @@ public class DavisAdapter implements WeatherAdapter {
                         .aggregation(AggregationMethod.MEAN)
                         .build(),
 
-                // Humidity sensors
                 EntityDefinition.builder()
                         .entityId("sensor.davis_humidity_out")
                         .friendlyName("Outside Humidity")
@@ -119,7 +118,6 @@ public class DavisAdapter implements WeatherAdapter {
                         .aggregation(AggregationMethod.MEAN)
                         .build(),
 
-                // Pressure
                 EntityDefinition.builder()
                         .entityId("sensor.davis_pressure")
                         .friendlyName("Barometric Pressure")
@@ -129,7 +127,6 @@ public class DavisAdapter implements WeatherAdapter {
                         .aggregation(AggregationMethod.MEAN)
                         .build(),
 
-                // Wind sensors
                 EntityDefinition.builder()
                         .entityId("sensor.davis_wind_speed")
                         .friendlyName("Wind Speed")
@@ -157,7 +154,6 @@ public class DavisAdapter implements WeatherAdapter {
                         .aggregation(AggregationMethod.MAX)
                         .build(),
 
-                // Rain sensors
                 EntityDefinition.builder()
                         .entityId("sensor.davis_rain_rate")
                         .friendlyName("Rain Rate")
@@ -176,7 +172,6 @@ public class DavisAdapter implements WeatherAdapter {
                         .aggregation(AggregationMethod.LAST)
                         .build(),
 
-                // Solar/UV sensors
                 EntityDefinition.builder()
                         .entityId("sensor.davis_solar_radiation")
                         .friendlyName("Solar Radiation")
@@ -197,54 +192,45 @@ public class DavisAdapter implements WeatherAdapter {
         );
     }
 
-    @Override
-    public void start(AdapterContext context) throws AdapterException {
-        this.context = context;
-        this.logger = context.getLogger();
+    @PostConstruct
+    void start() {
+        LOG.info("Starting Davis Vantage Pro adapter");
 
-        logger.info("Starting Davis Vantage Pro adapter");
+        String serialPort = config.getSerialPort();
+        int baudRate = config.getBaudRate();
 
-        // Load configuration
-        AdapterConfiguration config = context.getConfiguration();
-        String serialPort = config.getRequiredString("serial-port");
-        int baudRate = config.getInt("baud-rate").orElse(19200);
-
-        logger.info("Configuration: port={}, baud={}", serialPort, baudRate);
+        LOG.info("Configuration: port={}, baud={}", serialPort, baudRate);
 
         try {
-            // Create serial connection (real or simulated)
             if (SimulatedDavisConnection.isSimulatedPort(serialPort)) {
-                logger.info("Using SIMULATED connection - no hardware required");
+                LOG.info("Using SIMULATED connection - no hardware required");
                 serialConnection = new SimulatedDavisConnection(serialPort, baudRate);
             } else {
                 serialConnection = new DavisSerialConnection(serialPort, baudRate);
             }
 
-            // Create protocol handler
             protocolHandler = new DavisProtocolHandler(serialConnection);
 
-            // Set up callbacks
             protocolHandler.setLoopRecordCallback(this::onLoopRecord);
             protocolHandler.setArchiveRecordCallback(this::onArchiveRecord);
             protocolHandler.setStateChangeCallback(state ->
-                    logger.debug("Protocol state: {}", state));
+                    LOG.debug("Protocol state: {}", state));
             protocolHandler.setErrorCallback(error ->
-                    logger.error("Protocol error: {}", error));
+                    LOG.error("Protocol error: {}", error));
 
-            // Start the protocol handler
             protocolHandler.start();
 
             this.running = true;
-            logger.info("Davis adapter started successfully");
+            LOG.info("Davis adapter started successfully");
 
         } catch (IOException e) {
-            throw new AdapterException("Failed to start Davis adapter: " + e.getMessage(), e);
+            throw new RuntimeException("Failed to start Davis adapter: " + e.getMessage(), e);
         }
     }
 
-    @Override
-    public void stop() throws AdapterException {
-        logger.info("Stopping Davis Vantage Pro adapter");
+    @PreDestroy
+    void stop() {
+        LOG.info("Stopping Davis Vantage Pro adapter");
         running = false;
 
         if (protocolHandler != null) {
@@ -257,7 +243,7 @@ public class DavisAdapter implements WeatherAdapter {
             serialConnection = null;
         }
 
-        logger.info("Davis adapter stopped");
+        LOG.info("Davis adapter stopped");
     }
 
     @Override
@@ -270,7 +256,6 @@ public class DavisAdapter implements WeatherAdapter {
             return AdapterHealth.degraded("No data received yet", Map.of());
         }
 
-        // Check if data is stale (no update in 30 seconds)
         Instant staleThreshold = Instant.now().minusSeconds(30);
         if (lastSuccessfulRead.isBefore(staleThreshold)) {
             return AdapterHealth.degraded("Data is stale",
@@ -282,24 +267,22 @@ public class DavisAdapter implements WeatherAdapter {
 
     @Override
     public boolean supportsRecovery() {
-        // Davis consoles store archive data that can be downloaded
         return true;
     }
 
     @Override
     public RecoveryHandle requestRecovery(Instant fromTime, Instant toTime) throws AdapterException {
-        logger.info("Recovery requested from {} to {}", fromTime, toTime);
+        LOG.info("Recovery requested from {} to {}", fromTime, toTime);
 
         if (protocolHandler == null) {
             throw new AdapterException("Adapter not started");
         }
 
-        // Start archive download asynchronously
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
             try {
                 protocolHandler.downloadArchive(fromTime);
             } catch (IOException e) {
-                logger.error("Archive download failed", e);
+                LOG.error("Archive download failed", e);
                 throw new RuntimeException(e);
             }
         });
@@ -320,7 +303,7 @@ public class DavisAdapter implements WeatherAdapter {
 
             @Override
             public java.util.Optional<Integer> getProgress() {
-                return java.util.Optional.empty(); // Progress unknown for Davis archive
+                return java.util.Optional.empty();
             }
 
             @Override
@@ -362,28 +345,22 @@ public class DavisAdapter implements WeatherAdapter {
         Instant now = Instant.now();
         lastSuccessfulRead = now;
 
-        // Check for new archive record (for auto-archiving detection)
         if (lastNextRecord != -1 && lastNextRecord != record.nextRecord() && lastArchiveTime != null) {
-            logger.info("Archive record changed: {} -> {}, triggering download", lastNextRecord, record.nextRecord());
-            // Trigger archive download asynchronously
-            // Use time from 6 minutes ago to ensure we catch the new record
-            // (Davis timestamps have only minute precision, and archive interval is 5 min)
+            LOG.info("Archive record changed: {} -> {}, triggering download", lastNextRecord, record.nextRecord());
             Instant downloadFrom = lastArchiveTime.minusSeconds(360);
             CompletableFuture.runAsync(() -> {
                 try {
                     protocolHandler.downloadArchive(downloadFrom);
                 } catch (IOException e) {
-                    logger.error("Failed to download archive after record change", e);
+                    LOG.error("Failed to download archive after record change", e);
                 }
             });
         }
         lastNextRecord = record.nextRecord();
         lastArchiveTime = now;
 
-        // Build sensor readings - loop records are NOT persistent (transient data for live display only)
         List<SensorReading> readings = new ArrayList<>();
 
-        // Only publish valid readings (skip zero values for sensors that can't be zero)
         readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_temp_out", record.tempOut(), null, false));
         readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_temp_in", record.tempIn(), null, false));
 
@@ -412,20 +389,18 @@ public class DavisAdapter implements WeatherAdapter {
             readings.add(new SensorReading(now, ADAPTER_NAME, "sensor.davis_uv_index", record.uvIndex(), null, false));
         }
 
-        // Publish batch
         try {
-            context.getMessageBus().publishBatch(readings);
-            logger.debug("Published {} readings: temp={}, humidity={}, pressure={}",
+            messageBus.publishBatch(readings);
+            LOG.debug("Published {} readings: temp={}, humidity={}, pressure={}",
                     readings.size(), record.tempOut(), record.humidityOut(), record.pressure());
         } catch (MessageBusException e) {
-            logger.error("Failed to publish readings", e);
+            LOG.error("Failed to publish readings", e);
         }
     }
 
     private void onArchiveRecord(com.owl.adapter.davis.protocol.DavisArchiveRecord record) {
         Instant timestamp = record.timestamp();
 
-        // Build sensor readings from archive record
         List<SensorReading> readings = new ArrayList<>();
 
         readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_temp_out", record.tempOut()));
@@ -456,12 +431,11 @@ public class DavisAdapter implements WeatherAdapter {
             readings.add(new SensorReading(timestamp, ADAPTER_NAME, "sensor.davis_uv_index", record.uvIndex()));
         }
 
-        // Publish batch
         try {
-            context.getMessageBus().publishBatch(readings);
-            logger.debug("Published {} archive readings for {}", readings.size(), timestamp);
+            messageBus.publishBatch(readings);
+            LOG.debug("Published {} archive readings for {}", readings.size(), timestamp);
         } catch (MessageBusException e) {
-            logger.error("Failed to publish archive readings", e);
+            LOG.error("Failed to publish archive readings", e);
         }
     }
 }

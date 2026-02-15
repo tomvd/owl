@@ -16,7 +16,12 @@
 package com.owl.adapter.metar;
 
 import com.owl.core.api.*;
+import io.micronaut.context.annotation.Requires;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import jakarta.inject.Singleton;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -34,43 +39,35 @@ import java.util.regex.Pattern;
  * METAR weather adapter implementation.
  * <p>
  * Polls METAR observations from NOAA at configurable intervals.
- * Demonstrates a simple HTTP polling adapter pattern.
- * <p>
- * Configuration (application.yml):
- * <pre>
- * owl:
- *   adapters:
- *     metar-http:
- *       enabled: true
- *       station-id: EBBR
- *       poll-interval-minutes: 30
- *       api-url: https://tgftp.nws.noaa.gov/data/observations/metar/stations/{STATION}.TXT
- * </pre>
  */
+@Singleton
+@Requires(property = "owl.adapters.metar-http.enabled", value = "true")
 public class MetarAdapter implements WeatherAdapter {
 
+    private static final Logger LOG = LoggerFactory.getLogger(MetarAdapter.class);
     private static final String ADAPTER_NAME = "metar-http";
 
-    // METAR parsing patterns
     private static final Pattern TEMP_PATTERN = Pattern.compile("\\s(M?\\d{2})/(M?\\d{2})\\s");
     private static final Pattern WIND_PATTERN = Pattern.compile("\\s(\\d{3})(\\d{2,3})(G\\d{2,3})?KT\\s");
     private static final Pattern PRESSURE_PATTERN = Pattern.compile("\\s[AQ](\\d{4})\\s");
     private static final Pattern VISIBILITY_PATTERN = Pattern.compile("\\s(\\d+)SM\\s");
 
-    private Logger logger;
-    private AdapterContext context;
-    private MessageBus messageBus;
-    private MetricsRegistry metrics;
+    private final MessageBus messageBus;
+    private final MetricsRegistry metrics;
+    private final MetarConfiguration config;
+
     private ScheduledExecutorService scheduler;
     private HttpClient httpClient;
-
-    private String stationId;
-    private String apiUrl;
-    private int pollIntervalMinutes;
 
     private volatile Instant lastSuccessfulRead;
     private volatile String lastMetarRaw;
     private volatile boolean running = false;
+
+    public MetarAdapter(MessageBus messageBus, MetricsRegistry metrics, MetarConfiguration config) {
+        this.messageBus = messageBus;
+        this.metrics = metrics;
+        this.config = config;
+    }
 
     @Override
     public String getName() {
@@ -155,33 +152,21 @@ public class MetarAdapter implements WeatherAdapter {
         );
     }
 
-    @Override
-    public void start(AdapterContext context) throws AdapterException {
-        this.context = context;
-        this.logger = context.getLogger();
-        this.messageBus = context.getMessageBus();
-        this.metrics = context.getMetrics();
+    @PostConstruct
+    void start() {
+        LOG.info("Starting METAR adapter");
 
-        logger.info("Starting METAR adapter");
+        String stationId = config.getStationId();
+        int pollIntervalMinutes = config.getPollIntervalMinutes();
 
-        // Load configuration
-        AdapterConfiguration config = context.getConfiguration();
-        this.stationId = config.getRequiredString("station-id");
-        this.apiUrl = config.getString("api-url")
-                .orElse("https://tgftp.nws.noaa.gov/data/observations/metar/stations/{STATION}.TXT");
-        this.pollIntervalMinutes = config.getInt("poll-interval-minutes").orElse(30);
-
-        // Validate configuration
-        if (stationId.isEmpty()) {
-            throw new AdapterException("Station ID is required");
+        if (stationId == null || stationId.isEmpty()) {
+            throw new RuntimeException("Station ID is required");
         }
 
-        // Initialize HTTP client
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
 
-        // Start scheduled polling
         this.scheduler = Executors.newScheduledThreadPool(1, r -> {
             Thread t = new Thread(r, "metar-poller");
             t.setDaemon(true);
@@ -190,10 +175,7 @@ public class MetarAdapter implements WeatherAdapter {
 
         this.running = true;
 
-        // Initial fetch immediately
         scheduler.execute(this::pollMetar);
-
-        // Then schedule at fixed intervals
         scheduler.scheduleAtFixedRate(
                 this::pollMetar,
                 pollIntervalMinutes,
@@ -201,13 +183,13 @@ public class MetarAdapter implements WeatherAdapter {
                 TimeUnit.MINUTES
         );
 
-        logger.info("METAR adapter started: station={}, interval={} minutes",
+        LOG.info("METAR adapter started: station={}, interval={} minutes",
                 stationId, pollIntervalMinutes);
     }
 
-    @Override
-    public void stop() throws AdapterException {
-        logger.info("Stopping METAR adapter");
+    @PreDestroy
+    void stop() {
+        LOG.info("Stopping METAR adapter");
 
         running = false;
 
@@ -223,7 +205,7 @@ public class MetarAdapter implements WeatherAdapter {
             }
         }
 
-        logger.info("METAR adapter stopped");
+        LOG.info("METAR adapter stopped");
     }
 
     @Override
@@ -234,12 +216,12 @@ public class MetarAdapter implements WeatherAdapter {
 
         if (lastSuccessfulRead == null) {
             return AdapterHealth.degraded("No successful reads yet", Map.of(
-                    "station", stationId
+                    "station", config.getStationId()
             ));
         }
 
         Duration timeSinceLastRead = Duration.between(lastSuccessfulRead, Instant.now());
-        long expectedInterval = pollIntervalMinutes * 60L;
+        long expectedInterval = config.getPollIntervalMinutes() * 60L;
 
         if (timeSinceLastRead.getSeconds() > expectedInterval * 3) {
             return AdapterHealth.unhealthy(
@@ -263,18 +245,16 @@ public class MetarAdapter implements WeatherAdapter {
         );
     }
 
-    /**
-     * Poll METAR data from NOAA.
-     */
     private void pollMetar() {
         if (!running) {
             return;
         }
 
         try {
-            logger.debug("Polling METAR for station {}", stationId);
+            String stationId = config.getStationId();
+            LOG.debug("Polling METAR for station {}", stationId);
 
-            String url = apiUrl.replace("{STATION}", stationId);
+            String url = config.getApiUrl().replace("{STATION}", stationId);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(30))
@@ -287,7 +267,7 @@ public class MetarAdapter implements WeatherAdapter {
             );
 
             if (response.statusCode() != 200) {
-                logger.warn("METAR API returned status {}", response.statusCode());
+                LOG.warn("METAR API returned status {}", response.statusCode());
                 metrics.incrementCounter("errors");
                 return;
             }
@@ -296,92 +276,55 @@ public class MetarAdapter implements WeatherAdapter {
             String[] lines = body.split("\n");
 
             if (lines.length < 2) {
-                logger.warn("METAR response has insufficient lines");
+                LOG.warn("METAR response has insufficient lines");
                 return;
             }
 
-            // Second line contains the METAR observation
             String metar = lines[1].trim();
             this.lastMetarRaw = metar;
 
-            logger.debug("Received METAR: {}", metar);
+            LOG.debug("Received METAR: {}", metar);
 
-            // Parse and publish
             parseAndPublish(metar);
 
             this.lastSuccessfulRead = Instant.now();
             metrics.incrementCounter("success");
 
         } catch (Exception e) {
-            logger.error("Error polling METAR", e);
+            LOG.error("Error polling METAR", e);
             metrics.incrementCounter("errors");
         }
     }
 
-    /**
-     * Parse METAR string and publish sensor readings.
-     */
     private void parseAndPublish(String metar) throws MessageBusException {
         Instant timestamp = Instant.now();
 
-        // Add spaces around METAR for easier pattern matching
         String metarPadded = " " + metar + " ";
 
-        // Parse temperature and dewpoint (e.g., "12/08" or "M02/M05")
         Matcher tempMatcher = TEMP_PATTERN.matcher(metarPadded);
         if (tempMatcher.find()) {
             double temp = parseTemp(tempMatcher.group(1));
             double dewpoint = parseTemp(tempMatcher.group(2));
 
-            messageBus.publish(new SensorReading(
-                    timestamp,
-                    ADAPTER_NAME,
-                    "sensor.metar_temperature",
-                    temp
-            ));
-
-            messageBus.publish(new SensorReading(
-                    timestamp,
-                    ADAPTER_NAME,
-                    "sensor.metar_dewpoint",
-                    dewpoint
-            ));
+            messageBus.publish(new SensorReading(timestamp, ADAPTER_NAME, "sensor.metar_temperature", temp));
+            messageBus.publish(new SensorReading(timestamp, ADAPTER_NAME, "sensor.metar_dewpoint", dewpoint));
         }
 
-        // Parse wind (e.g., "27015KT" or "27015G25KT")
         Matcher windMatcher = WIND_PATTERN.matcher(metarPadded);
         if (windMatcher.find()) {
             double direction = Double.parseDouble(windMatcher.group(1));
             double speed = Double.parseDouble(windMatcher.group(2));
 
-            messageBus.publish(new SensorReading(
-                    timestamp,
-                    ADAPTER_NAME,
-                    "sensor.metar_wind_direction",
-                    direction
-            ));
+            messageBus.publish(new SensorReading(timestamp, ADAPTER_NAME, "sensor.metar_wind_direction", direction));
+            messageBus.publish(new SensorReading(timestamp, ADAPTER_NAME, "sensor.metar_wind_speed", speed));
 
-            messageBus.publish(new SensorReading(
-                    timestamp,
-                    ADAPTER_NAME,
-                    "sensor.metar_wind_speed",
-                    speed
-            ));
-
-            // Check for gust
             String gustStr = windMatcher.group(3);
             if (gustStr != null) {
-                double gust = Double.parseDouble(gustStr.substring(1)); // Remove 'G'
-                messageBus.publish(new SensorReading(
-                        timestamp,
-                        ADAPTER_NAME,
-                        "sensor.metar_wind_gust",
-                        gust
-                ));
+                double gust = Double.parseDouble(gustStr.substring(1));
+                messageBus.publish(new SensorReading(timestamp, ADAPTER_NAME, "sensor.metar_wind_gust", gust));
             }
         }
 
-        // Parse pressure (e.g., "A3012" for inHg or "Q1013" for hPa)
         Matcher pressureMatcher = PRESSURE_PATTERN.matcher(metarPadded);
         if (pressureMatcher.find()) {
             String prefix = metarPadded.charAt(pressureMatcher.start() + 1) == 'A' ? "A" : "Q";
@@ -389,38 +332,22 @@ public class MetarAdapter implements WeatherAdapter {
             double pressureHpa;
 
             if (prefix.equals("A")) {
-                // Convert inHg to hPa
                 double pressureInHg = Double.parseDouble(pressureStr) / 100.0;
                 pressureHpa = pressureInHg * 33.8639;
             } else {
-                // Already in hPa
                 pressureHpa = Double.parseDouble(pressureStr);
             }
 
-            messageBus.publish(new SensorReading(
-                    timestamp,
-                    ADAPTER_NAME,
-                    "sensor.metar_pressure",
-                    pressureHpa
-            ));
+            messageBus.publish(new SensorReading(timestamp, ADAPTER_NAME, "sensor.metar_pressure", pressureHpa));
         }
 
-        // Parse visibility (e.g., "10SM")
         Matcher visibilityMatcher = VISIBILITY_PATTERN.matcher(metarPadded);
         if (visibilityMatcher.find()) {
             double visibility = Double.parseDouble(visibilityMatcher.group(1));
-            messageBus.publish(new SensorReading(
-                    timestamp,
-                    ADAPTER_NAME,
-                    "sensor.metar_visibility",
-                    visibility
-            ));
+            messageBus.publish(new SensorReading(timestamp, ADAPTER_NAME, "sensor.metar_visibility", visibility));
         }
     }
 
-    /**
-     * Parse temperature string (handles negative with "M" prefix).
-     */
     private double parseTemp(String tempStr) {
         if (tempStr.startsWith("M")) {
             return -Double.parseDouble(tempStr.substring(1));

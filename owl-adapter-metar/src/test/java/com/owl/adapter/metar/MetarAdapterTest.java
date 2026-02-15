@@ -19,6 +19,8 @@ import com.owl.core.api.*;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -27,30 +29,15 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class MetarAdapterTest {
 
-    @Test
-    void providerCreatesAdapter() {
-        MetarAdapterProvider provider = new MetarAdapterProvider();
-
-        WeatherAdapter adapter = provider.createAdapter();
-
-        assertNotNull(adapter);
-        assertInstanceOf(MetarAdapter.class, adapter);
-    }
-
-    @Test
-    void providerHasCorrectMetadata() {
-        MetarAdapterProvider provider = new MetarAdapterProvider();
-
-        ProviderMetadata metadata = provider.getMetadata();
-
-        assertEquals("metar-http", metadata.id());
-        assertEquals("METAR Weather Adapter", metadata.name());
-        assertEquals("1.0.0", metadata.version());
+    private MetarAdapter createAdapter() {
+        MetarConfiguration config = new MetarConfiguration();
+        config.setStationId("EBBR");
+        return new MetarAdapter(new NoOpMessageBus(), new NoOpMetricsRegistry(), config);
     }
 
     @Test
     void adapterHasCorrectIdentity() {
-        MetarAdapter adapter = new MetarAdapter();
+        MetarAdapter adapter = createAdapter();
 
         assertEquals("metar-http", adapter.getName());
         assertEquals("METAR Weather Adapter", adapter.getDisplayName());
@@ -59,24 +46,21 @@ class MetarAdapterTest {
 
     @Test
     void adapterProvidesExpectedEntities() {
-        MetarAdapter adapter = new MetarAdapter();
+        MetarAdapter adapter = createAdapter();
 
         List<EntityDefinition> entities = adapter.getProvidedEntities();
 
         assertNotNull(entities);
         assertFalse(entities.isEmpty());
 
-        // Check for temperature entity
         assertTrue(entities.stream()
                         .anyMatch(e -> e.getEntityId().equals("sensor.metar_temperature")),
                 "Should provide temperature entity");
 
-        // Check for pressure entity
         assertTrue(entities.stream()
                         .anyMatch(e -> e.getEntityId().equals("sensor.metar_pressure")),
                 "Should provide pressure entity");
 
-        // Check for wind speed entity
         assertTrue(entities.stream()
                         .anyMatch(e -> e.getEntityId().equals("sensor.metar_wind_speed")),
                 "Should provide wind speed entity");
@@ -84,7 +68,7 @@ class MetarAdapterTest {
 
     @Test
     void adapterEntitiesHaveCorrectSource() {
-        MetarAdapter adapter = new MetarAdapter();
+        MetarAdapter adapter = createAdapter();
 
         List<EntityDefinition> entities = adapter.getProvidedEntities();
 
@@ -96,7 +80,7 @@ class MetarAdapterTest {
 
     @Test
     void adapterInitiallyUnhealthy() {
-        MetarAdapter adapter = new MetarAdapter();
+        MetarAdapter adapter = createAdapter();
 
         AdapterHealth health = adapter.getHealth();
 
@@ -105,8 +89,26 @@ class MetarAdapterTest {
 
     @Test
     void adapterDoesNotSupportRecovery() {
-        MetarAdapter adapter = new MetarAdapter();
+        MetarAdapter adapter = createAdapter();
 
         assertFalse(adapter.supportsRecovery());
+    }
+
+    // Minimal test doubles
+
+    static class NoOpMessageBus implements MessageBus {
+        @Override public void publish(WeatherEvent event) {}
+        @Override public void publishBatch(List<? extends WeatherEvent> events) {}
+        @Override public <T extends WeatherEvent> void subscribe(Class<T> eventType, Consumer<T> consumer) {}
+    }
+
+    static class NoOpMetricsRegistry implements MetricsRegistry {
+        @Override public void incrementCounter(String name) {}
+        @Override public void incrementCounter(String name, long amount) {}
+        @Override public void incrementCounter(String name, Map<String, String> tags) {}
+        @Override public void recordGauge(String name, double value) {}
+        @Override public void registerGauge(String name, java.util.function.Supplier<Number> supplier) {}
+        @Override public void recordTiming(String name, long durationMs) {}
+        @Override public void recordDistribution(String name, double value) {}
     }
 }

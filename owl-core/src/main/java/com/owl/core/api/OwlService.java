@@ -18,80 +18,29 @@ package com.owl.core.api;
 /**
  * Primary interface that all Owl services must implement.
  * <p>
- * Services are responsible for processing weather data or providing
- * additional functionality on top of the core platform. Examples include:
- * <ul>
- *   <li>Exporting data to external systems</li>
- *   <li>Generating reports or alerts</li>
- *   <li>Aggregating or transforming data</li>
- * </ul>
- * <p>
- * Thread Safety: Implementations must be thread-safe as methods may be
- * called from different threads.
+ * Services are Micronaut beans annotated with {@code @Singleton} and
+ * {@code @Requires(property = "owl.services.{name}.enabled", value = "true")}.
+ * Lifecycle is managed via {@code @PostConstruct} and {@code @PreDestroy}.
  */
 public interface OwlService {
 
     /**
      * Unique identifier for this service.
-     * Should follow pattern: "service-type" (e.g., "export", "alert")
-     *
-     * @return unique service name
      */
     String getName();
 
     /**
      * Human-readable display name.
-     *
-     * @return display name (e.g., "Data Export Service")
      */
     String getDisplayName();
 
     /**
      * Version of this service implementation.
-     * Follows semantic versioning: MAJOR.MINOR.PATCH
-     *
-     * @return version string
      */
     String getVersion();
 
     /**
-     * Initialize and start the service.
-     * <p>
-     * This method should:
-     * <ul>
-     *   <li>Initialize any required resources</li>
-     *   <li>Subscribe to relevant message bus topics</li>
-     *   <li>Start background processing if needed</li>
-     * </ul>
-     * <p>
-     * This method should return quickly. Long-running operations should
-     * be performed in background threads.
-     *
-     * @param context provides access to message bus, configuration, and services
-     * @throws ServiceException if service cannot start
-     */
-    void start(ServiceContext context) throws ServiceException;
-
-    /**
-     * Gracefully stop the service.
-     * <p>
-     * This method should:
-     * <ul>
-     *   <li>Stop processing</li>
-     *   <li>Unsubscribe from message bus</li>
-     *   <li>Clean up resources</li>
-     *   <li>Stop background threads</li>
-     * </ul>
-     *
-     * @throws ServiceException if service cannot stop cleanly
-     */
-    void stop() throws ServiceException;
-
-    /**
      * Get current health status of the service.
-     * Called periodically by the framework for monitoring.
-     *
-     * @return current health status
      */
     ServiceHealth getHealth();
 }

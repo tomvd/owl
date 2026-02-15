@@ -31,9 +31,13 @@ dependencies {
     runtimeOnly("ch.qos.logback:logback-classic")
     runtimeOnly("org.yaml:snakeyaml")
 
-    // Adapters (loaded at runtime via ServiceLoader)
+    // Adapters and services (discovered by Micronaut DI at runtime)
     runtimeOnly(project(":owl-adapter-davis"))
     runtimeOnly(project(":owl-adapter-openweather"))
+    runtimeOnly(project(":owl-adapter-metar"))
+    runtimeOnly(project(":owl-adapter-blitzortung"))
+    runtimeOnly(project(":owl-adapter-pmsensor"))
+    runtimeOnly(project(":owl-adapter-vlinder"))
     runtimeOnly(project(":owl-service-export"))
 
     // Testing
@@ -60,7 +64,7 @@ micronaut {
         annotations("com.owl.core.*")
     }
     aot {
-        optimizeServiceLoading = false
+        optimizeServiceLoading = true
         convertYamlToJava = false
         precomputeOperations = true
         cacheEnvironment = true
@@ -71,24 +75,6 @@ micronaut {
     }
 }
 
-// Export API classes for adapter development
-tasks.register<Jar>("apiJar") {
-    archiveClassifier.set("api")
-    from(sourceSets.main.get().output)
-    include("com/owl/core/api/**")
-
-    manifest {
-        attributes(
-            "Implementation-Title" to "Owl (OpenWeatherLink) Core API",
-            "Implementation-Version" to project.version,
-            "Implementation-Vendor" to "Owl Project"
-        )
-    }
-}
-
-artifacts {
-    archives(tasks.named("apiJar"))
-}
 
 tasks.named<io.micronaut.gradle.docker.NativeImageDockerfile>("dockerfileNative") {
     jdkVersion.set("21")

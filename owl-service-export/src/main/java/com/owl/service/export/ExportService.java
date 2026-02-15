@@ -15,75 +15,39 @@
  */
 package com.owl.service.export;
 
-import com.owl.core.api.*;
-import org.slf4j.Logger;
+import com.owl.core.api.OwlService;
+import com.owl.core.api.ServiceHealth;
+import io.micronaut.context.annotation.Requires;
+import jakarta.inject.Singleton;
 
 /**
- * Data Export Service implementation.
+ * Export service health bean.
  * <p>
- * Exports weather data to external systems and formats.
- * Currently a stub implementation.
+ * The actual export work is done by {@link CurrentExporter},
+ * {@link TwentyFourHourExporter}, and {@link ArchiveExporter}.
+ * This bean provides service identity and health status.
  */
+@Singleton
+@Requires(property = "owl.services.export.enabled", value = "true")
 public class ExportService implements OwlService {
-
-    private static final String NAME = "export";
-    private static final String DISPLAY_NAME = "Data Export Service";
-    private static final String VERSION = "1.0.0";
-
-    private Logger logger;
-    private ServiceContext context;
-    private volatile boolean running = false;
 
     @Override
     public String getName() {
-        return NAME;
+        return "export";
     }
 
     @Override
     public String getDisplayName() {
-        return DISPLAY_NAME;
+        return "Data Export Service";
     }
 
     @Override
     public String getVersion() {
-        return VERSION;
-    }
-
-    @Override
-    public void start(ServiceContext context) throws ServiceException {
-        this.context = context;
-        this.logger = context.getLogger();
-
-        logger.info("Starting {} v{}", DISPLAY_NAME, VERSION);
-
-        // TODO: Initialize export destinations
-        // TODO: Subscribe to weather events from message bus
-
-        running = true;
-        logger.info("{} started successfully", DISPLAY_NAME);
-    }
-
-    @Override
-    public void stop() throws ServiceException {
-        if (logger != null) {
-            logger.info("Stopping {}", DISPLAY_NAME);
-        }
-
-        // TODO: Clean up export destinations
-        // TODO: Unsubscribe from message bus
-
-        running = false;
-
-        if (logger != null) {
-            logger.info("{} stopped", DISPLAY_NAME);
-        }
+        return "1.0.0";
     }
 
     @Override
     public ServiceHealth getHealth() {
-        if (!running) {
-            return ServiceHealth.unhealthy("Service not running");
-        }
         return ServiceHealth.healthy("Export service operational");
     }
 }

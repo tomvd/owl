@@ -16,6 +16,7 @@
 package com.owl.core.persistence;
 
 import com.owl.core.api.SensorReading;
+import com.owl.core.api.StatisticsComputedEvent;
 import com.owl.core.api.WeatherEvent;
 import com.owl.core.bus.MessageBusImpl;
 import com.owl.core.persistence.entity.Statistics;
@@ -148,6 +149,7 @@ public class StatisticsAggregationService {
         lastProcessedTimestamp = alignedTimestamp;
 
         try {
+            Instant windowStart = alignedTimestamp.minus(FIVE_MINUTES);
             aggregate5Minutes(alignedTimestamp);
 
             // If this is an hour boundary, also do hourly rollup
@@ -155,6 +157,9 @@ public class StatisticsAggregationService {
                 Instant hourStart = alignedTimestamp.minus(ONE_HOUR);
                 aggregateHourly(hourStart, alignedTimestamp);
             }
+
+            // Notify subscribers that fresh statistics are available
+            messageBus.publish(new StatisticsComputedEvent(windowStart, alignedTimestamp));
         } catch (Exception e) {
             LOG.error("Failed to aggregate statistics for timestamp {}", alignedTimestamp, e);
         }

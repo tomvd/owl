@@ -21,20 +21,9 @@ flyway:
 
 # Owl configuration
 owl:
-  # Plugins directory for loading adapter JARs
-  plugins:
-    directory: ${OWL_PLUGINS_DIR:plugins}
-
   # Adapter configurations
   # Each adapter is configured under owl.adapters.<adapter-name>
   adapters:
-    # METAR weather data adapter (HTTP polling)
-    metar-http:
-      enabled: false
-      station-id: ${METAR_STATION:EBBR}
-      poll-interval-minutes: 30
-      api-url: https://tgftp.nws.noaa.gov/data/observations/metar/stations/{STATION}.TXT
-
     # Davis Vantage Pro adapter (serial port)
     # Set serial-port to "SIMULATED" to run without hardware
     davis-serial:
@@ -47,6 +36,8 @@ owl:
       loop-count: 200
       wakeup-timeout-ms: 3000
       reconnect-delay-ms: 5000
+
+    # OpenWeather API adapter (HTTP polling)
     openweather:
       enabled: true
       latitude: 51.1333
@@ -55,6 +46,47 @@ owl:
       lang: nl             # language for descriptions
       poll-interval-minutes: 10
       api-url: https://api.openweathermap.org/data/2.5/weather
+
+    # METAR weather data adapter (HTTP polling)
+    metar-http:
+      enabled: false
+      station-id: ${METAR_STATION:EBBR}
+      poll-interval-minutes: 30
+      api-url: https://tgftp.nws.noaa.gov/data/observations/metar/stations/{STATION}.TXT
+
+    # Blitzortung lightning detection adapter
+    blitzortung:
+      enabled: false
+      latitude: 51.063
+      longitude: 4.667
+      radius-km: 50
+      poll-interval-minutes: 5
+
+    # Particulate matter sensor adapter
+    pmsensor:
+      enabled: false
+      sensor-id: ${PM_SENSOR_ID:}
+      poll-interval-minutes: 5
+      api-url: ""
+
+    # Vlinder weather network adapter
+    vlinder:
+      enabled: false
+      station-id: ${VLINDER_STATION:}
+      poll-interval-minutes: 10
+
+  # Service configurations
+  services:
+    export:
+      enabled: true
+      output-directory: ${EXPORT_DIR:./export}
+      ftp-enabled: false
+      ftp-host: ${FTP_HOST:}
+      ftp-port: ${FTP_PORT:21}
+      ftp-username: ${FTP_USER:}
+      ftp-password: ${FTP_PASSWORD:}
+      ftp-directory: ${FTP_DIR:/}
+      entities-24h: sensor.davis_temp_out,sensor.davis_wind_speed,sensor.davis_wind_gust,sensor.davis_wind_dir,sensor.davis_rain_rate,sensor.davis_rain_daily,sensor.davis_solar_radiation
 
 # Logging configuration
 logger:

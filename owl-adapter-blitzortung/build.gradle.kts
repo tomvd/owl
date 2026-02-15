@@ -10,7 +10,6 @@ dependencies {
     // Testing
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testImplementation("org.assertj:assertj-core:3.25.3")
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
@@ -20,6 +19,6 @@ tasks.test {
 
 micronaut {
     processing {
-        annotations("com.owl.adapter.metar.*")
+        annotations("com.owl.adapter.blitzortung.*")
     }
 }

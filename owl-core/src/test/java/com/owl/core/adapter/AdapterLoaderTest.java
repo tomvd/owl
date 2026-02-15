@@ -18,139 +18,158 @@ package com.owl.core.adapter;
 import com.owl.core.api.*;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-import java.util.ServiceLoader;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for adapter discovery mechanism.
+ * Tests for AdapterLifecycleManager entity registration and adapter lookup.
  */
 class AdapterLoaderTest {
 
     @Test
-    void serviceLoaderCanFindAdapterProviders() {
-        // This test verifies that the ServiceLoader mechanism works
-        ServiceLoader<AdapterProvider> loader = ServiceLoader.load(AdapterProvider.class);
+    void registersEntitiesFromAllAdapters() {
+        TestEntityRegistry registry = new TestEntityRegistry();
+        TestAdapter adapter1 = new TestAdapter("adapter-1", List.of(
+                EntityDefinition.builder()
+                        .entityId("sensor.test_temp")
+                        .friendlyName("Test Temperature")
+                        .source("adapter-1")
+                        .unit("°C")
+                        .deviceClass("temperature")
+                        .aggregation(AggregationMethod.MEAN)
+                        .build()
+        ));
+        TestAdapter adapter2 = new TestAdapter("adapter-2", List.of(
+                EntityDefinition.builder()
+                        .entityId("sensor.test_humidity")
+                        .friendlyName("Test Humidity")
+                        .source("adapter-2")
+                        .unit("%")
+                        .deviceClass("humidity")
+                        .aggregation(AggregationMethod.MEAN)
+                        .build()
+        ));
 
-        // Count providers found
-        int count = 0;
-        for (AdapterProvider provider : loader) {
-            assertNotNull(provider, "Provider should not be null");
-            assertNotNull(provider.getMetadata(), "Metadata should not be null");
-            count++;
-        }
+        AdapterLifecycleManager manager = new AdapterLifecycleManager(
+                List.of(adapter1, adapter2), registry);
+        manager.registerEntities();
 
-        // We may or may not have providers depending on test classpath
-        // This test mainly verifies the mechanism works without errors
-        assertTrue(count >= 0, "ServiceLoader should work without errors");
+        assertEquals(2, registry.getAllEntities().size());
+        assertTrue(registry.isRegistered("sensor.test_temp"));
+        assertTrue(registry.isRegistered("sensor.test_humidity"));
     }
 
     @Test
-    void adapterProviderCreatesAdapter() {
-        // Create a test provider
-        AdapterProvider provider = new TestAdapterProvider();
+    void getAdapterByName() {
+        TestEntityRegistry registry = new TestEntityRegistry();
+        TestAdapter adapter = new TestAdapter("test-adapter", List.of());
 
-        // Verify metadata
-        ProviderMetadata metadata = provider.getMetadata();
-        assertEquals("test-adapter", metadata.id());
-        assertEquals("Test Adapter", metadata.name());
+        AdapterLifecycleManager manager = new AdapterLifecycleManager(
+                List.of(adapter), registry);
 
-        // Verify adapter creation
-        WeatherAdapter adapter = provider.createAdapter();
-        assertNotNull(adapter);
-        assertEquals("test-adapter", adapter.getName());
+        assertTrue(manager.getAdapter("test-adapter").isPresent());
+        assertEquals("test-adapter", manager.getAdapter("test-adapter").get().getName());
+        assertTrue(manager.getAdapter("nonexistent").isEmpty());
+    }
+
+    @Test
+    void getAdaptersReturnsAll() {
+        TestEntityRegistry registry = new TestEntityRegistry();
+        TestAdapter a1 = new TestAdapter("a1", List.of());
+        TestAdapter a2 = new TestAdapter("a2", List.of());
+
+        AdapterLifecycleManager manager = new AdapterLifecycleManager(
+                List.of(a1, a2), registry);
+
+        assertEquals(2, manager.getAdapters().size());
+    }
+
+    @Test
+    void healthStatusesCollected() {
+        TestEntityRegistry registry = new TestEntityRegistry();
+        TestAdapter adapter = new TestAdapter("test-adapter", List.of());
+
+        AdapterLifecycleManager manager = new AdapterLifecycleManager(
+                List.of(adapter), registry);
+
+        Map<String, AdapterHealth> statuses = manager.getHealthStatuses();
+        assertEquals(1, statuses.size());
+        assertEquals(AdapterHealth.Status.UNHEALTHY, statuses.get("test-adapter").getStatus());
     }
 
     @Test
     void adapterProvidesEntities() {
-        TestAdapter adapter = new TestAdapter();
-        List<EntityDefinition> entities = adapter.getProvidedEntities();
+        TestAdapter adapter = new TestAdapter("test-adapter", List.of(
+                EntityDefinition.builder()
+                        .entityId("sensor.test_temperature")
+                        .friendlyName("Test Temperature")
+                        .source("test-adapter")
+                        .unit("°C")
+                        .deviceClass("temperature")
+                        .aggregation(AggregationMethod.MEAN)
+                        .build()
+        ));
 
+        List<EntityDefinition> entities = adapter.getProvidedEntities();
         assertNotNull(entities);
         assertFalse(entities.isEmpty());
-
-        EntityDefinition entity = entities.get(0);
-        assertEquals("sensor.test_temperature", entity.getEntityId());
-        assertEquals("test-adapter", entity.getSource());
+        assertEquals("sensor.test_temperature", entities.get(0).getEntityId());
+        assertEquals("test-adapter", entities.get(0).getSource());
     }
 
     @Test
     void adapterHealthReportsCorrectly() {
-        TestAdapter adapter = new TestAdapter();
-
-        // Before start, should be unhealthy
+        TestAdapter adapter = new TestAdapter("test-adapter", List.of());
         AdapterHealth health = adapter.getHealth();
         assertEquals(AdapterHealth.Status.UNHEALTHY, health.getStatus());
     }
 
     // Test implementations
-    static class TestAdapterProvider implements AdapterProvider {
-        @Override
-        public WeatherAdapter createAdapter() {
-            return new TestAdapter();
-        }
-
-        @Override
-        public ProviderMetadata getMetadata() {
-            return new ProviderMetadata(
-                    "test-adapter",
-                    "Test Adapter",
-                    "1.0.0",
-                    "Test",
-                    "Test adapter for unit tests"
-            );
-        }
-    }
 
     static class TestAdapter implements WeatherAdapter {
-        private boolean running = false;
+        private final String name;
+        private final List<EntityDefinition> entities;
 
-        @Override
-        public String getName() {
-            return "test-adapter";
+        TestAdapter(String name, List<EntityDefinition> entities) {
+            this.name = name;
+            this.entities = entities;
         }
 
-        @Override
-        public String getDisplayName() {
-            return "Test Adapter";
-        }
-
-        @Override
-        public String getVersion() {
-            return "1.0.0";
-        }
-
-        @Override
-        public List<EntityDefinition> getProvidedEntities() {
-            return List.of(
-                    EntityDefinition.builder()
-                            .entityId("sensor.test_temperature")
-                            .friendlyName("Test Temperature")
-                            .source("test-adapter")
-                            .unit("°C")
-                            .deviceClass("temperature")
-                            .aggregation(AggregationMethod.MEAN)
-                            .build()
-            );
-        }
-
-        @Override
-        public void start(AdapterContext context) throws AdapterException {
-            running = true;
-        }
-
-        @Override
-        public void stop() throws AdapterException {
-            running = false;
-        }
+        @Override public String getName() { return name; }
+        @Override public String getDisplayName() { return "Test " + name; }
+        @Override public String getVersion() { return "1.0.0"; }
+        @Override public List<EntityDefinition> getProvidedEntities() { return entities; }
 
         @Override
         public AdapterHealth getHealth() {
-            if (!running) {
-                return AdapterHealth.unhealthy("Not running");
-            }
-            return AdapterHealth.healthy("OK");
+            return AdapterHealth.unhealthy("Not running");
+        }
+    }
+
+    static class TestEntityRegistry implements EntityRegistry {
+        private final Map<String, EntityDefinition> entities = new LinkedHashMap<>();
+
+        @Override
+        public Optional<EntityDefinition> getEntity(String entityId) {
+            return Optional.ofNullable(entities.get(entityId));
+        }
+
+        @Override
+        public List<EntityDefinition> getEntitiesBySource(String source) {
+            return entities.values().stream()
+                    .filter(e -> source.equals(e.getSource()))
+                    .toList();
+        }
+
+        @Override
+        public List<EntityDefinition> getAllEntities() {
+            return new ArrayList<>(entities.values());
+        }
+
+        @Override
+        public void register(EntityDefinition entity) {
+            entities.put(entity.getEntityId(), entity);
         }
     }
 }
