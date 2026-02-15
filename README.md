@@ -1,6 +1,6 @@
 ﻿# 🦉 Owl (OpenWeatherLink)
 
-Open source weather data ingestion platform with plugin architecture.
+Open source weather data ingestion platform used by weerstationlier.be
 
 ## Quick Start
 ```bash
